@@ -27,6 +27,15 @@ build:
 				 --build-arg BUILD_REPO_ORIGIN=${BUILD_REPO_ORIGIN} \
 				 . --file docker/${DOCKERFILE}
 
+buildx:
+	docker buildx build --rm -t ${REGISTRY}/${LATEST} -t ${REGISTRY}/${VERSION} \
+				 --build-arg BUILD_COMMIT_SHA1=${BUILD_COMMIT_SHA1} \
+				 --build-arg BUILD_COMMIT_DATE=${BUILD_COMMIT_DATE} \
+				 --build-arg BUILD_BRANCH=${BUILD_BRANCH} \
+				 --build-arg BUILD_DATE=${BUILD_DATE} \
+				 --build-arg BUILD_REPO_ORIGIN=${BUILD_REPO_ORIGIN} \
+				 . --file docker/${DOCKERFILE}
+
 login:
 	docker login
 
