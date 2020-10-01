@@ -41,7 +41,7 @@ class _RadarrApiAdapter(BaseHTTPRequestHandler, FileServingMixin):
         return path
 
     def mutate_data(self, data):
-        def adapt_item(item):
+        def adapt_item(item, request_path):
             # local_db_id = item["id"]
             tmdb_id = item["tmdbId"]
 
@@ -69,15 +69,16 @@ class _RadarrApiAdapter(BaseHTTPRequestHandler, FileServingMixin):
                     if poster[0] != "/":
                         poster = "/" + poster
 
-                    parts = urllib.parse.urlsplit(self.path)
+                    parts = urllib.parse.urlsplit(request_path)
                     new_parts = (parts[0], parts[1], "/poster" + poster, "", "")  # TODO: add auth key ?auth_key=....
                     poster_url = urllib.parse.urlunsplit(new_parts)
 
                     out["poster"] = poster_url
+                    out["poster"] = "https://m.media-amazon.com/images/M/MV5BMmM1ZTZhNDUtYzBkNi00YzQ0LWEyZjItM2M5OTI2ZTU0MDlkXkEyXkFqcGdeQXVyMjI0MjMwMzQ@._V1_SY1000_CR0,0,704,1000_AL_.jpg"
 
             return out
 
-        return [adapt_item(v) for v in data]
+        return [adapt_item(v, self.path) for v in data]
 
     def api_adapter(self):
         headers = dict(self.headers.items())
