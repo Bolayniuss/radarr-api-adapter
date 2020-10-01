@@ -73,8 +73,7 @@ class _RadarrApiAdapter(BaseHTTPRequestHandler, FileServingMixin):
                     new_parts = (parts[0], parts[1], "/poster" + poster, "", "")  # TODO: add auth key ?auth_key=....
                     poster_url = urllib.parse.urlunsplit(new_parts)
 
-                    out["poster"] = poster_url
-                    out["poster"] = "https://m.media-amazon.com/images/M/MV5BMmM1ZTZhNDUtYzBkNi00YzQ0LWEyZjItM2M5OTI2ZTU0MDlkXkEyXkFqcGdeQXVyMjI0MjMwMzQ@._V1_SY1000_CR0,0,704,1000_AL_.jpg"
+                    out["poster_path"] = poster_url
 
             return out
 
