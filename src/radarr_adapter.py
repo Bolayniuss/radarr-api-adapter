@@ -1,36 +1,85 @@
 import gzip
+import os
+import re
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 
 import urllib
 import urllib.request
 import urllib.response
+import urllib.parse
 import requests
 
 import json
 
+from handler_mixins import FileServingMixin
 
-class _RadarrApiAdapter(BaseHTTPRequestHandler):
+
+class HTTPError(Exception):
+    def __init__(self, code: int, message: str = None):
+        self.code = code
+        self.message = message
+        super().__init__(code)
+
+
+def match(pattern, path):
+    return re.fullmatch(pattern, path)
+
+
+class _RadarrApiAdapter(BaseHTTPRequestHandler, FileServingMixin):
+
+    serve_poster = None
+    poster_mapping = None
 
     base_api = None
     auth_key = None
 
-    def auth(self):
-        if self.auth_key is None:
-            return True
-        return False
+    def map_api_path(self, path):
+        if self.poster_mapping:
+            api_path, _ = self.poster_mapping
+            path = path.replace(api_path, "")
+        return path
 
-    def do_GET(self):
-        if not self.auth():
-            self.send_response(HTTPStatus.UNAUTHORIZED)
-            self.end_headers()
-            return
+    def mutate_data(self, data):
+        def adapt_item(item):
+            # local_db_id = item["id"]
+            tmdb_id = item["tmdbId"]
 
-        if self.path != "/radarr-api-adapter/movie/":
-            self.send_response(HTTPStatus.NOT_FOUND)
-            self.end_headers()
-            return
+            out = dict(
+                overview=item["overview"],
+                genres=item["genres"],
+                title=item["title"],
+                runtime=item["runtime"],
+                id=tmdb_id,
+                imdb_id=item.get("imdbId", ""),
+                homepage=item.get("website"),
+                trailer_key=item.get("youTubeTrailerId"),
+                trailer_site="youtube",
+            )
 
+            if self.serve_poster:
+                poster = None
+                for media in item.get("images", []):
+                    if media.get("coverType") == "poster":
+                        poster = media.get("url")
+                        break
+
+                if poster:
+                    poster = self.map_api_path(poster)
+                    if poster[0] != "/":
+                        poster = "/" + poster
+
+                    parts = urllib.parse.urlsplit(self.path)
+                    new_parts = (parts[0], parts[1], "/poster" + poster, "", "")  # TODO: add auth key ?auth_key=....
+                    poster_url = urllib.parse.urlunsplit(new_parts)
+
+                    out["poster"] = poster_url
+
+            return out
+
+        return [adapt_item(v) for v in data]
+
+    def api_adapter(self):
         headers = dict(self.headers.items())
         headers["Accept"] = "application/json"
 
@@ -42,40 +91,94 @@ class _RadarrApiAdapter(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        response_headers = response.headers
-
         data = response.json()
         new_data = self.mutate_data(data)
 
+        response_headers = response.headers
         # for h, v in response_headers.items():
         #     print("Set Header %s: %s" % (h, v))
         #     self.send_header(h, v)
-        self.end_headers()
 
         f = self.wfile
         # if response_headers.get("Content-Encoding") == "gzip":
         #     f = gzip.GzipFile(mode="wb", fileobj=f)
 
         j_data = json.dumps(new_data)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(j_data)))
+
+        self.end_headers()
+
+
         f.write(j_data.encode("utf-8"))
 
-    def mutate_data(self, data):
-        def adapt_item(item):
-            # local_db_id = item["id"]
-            tmdb_id = item["tmdbId"]
+    def poster(self, path):
+        ext_path = "/%s" % path
+        if "/../" in ext_path or "/./" in ext_path:
+            raise HTTPError(HTTPStatus.FORBIDDEN)
 
-            return dict(
-                overview=item["overview"],
-                genres=item["genres"],
-                title=item["title"],
-                runtime=item["runtime"],
-                id=tmdb_id,
-                imdb_id=item.get("imdbId", ""),
-                homepage=item.get("website", "")
-            )
-        return [adapt_item(v) for v in data]
+        if not self.serve_poster:
+            raise HTTPError(HTTPStatus.NOT_FOUND)
+
+        if not self.poster_mapping and not len(self.poster_mapping) == 2:
+            raise HTTPError(HTTPStatus.INTERNAL_SERVER_ERROR)
+
+        _, local_base_path = self.poster_mapping
+        local_path = os.path.join(local_base_path, path)
+
+        if not os.path.isfile(local_path):
+            raise HTTPError(HTTPStatus.NOT_FOUND)
+
+        self.send_file(local_path)
+        self.copyfile(local_path, self.wfile)
+
+    routes = (
+        (r"^/radarr-api-adapter/movie/$", api_adapter),
+        (r"^/poster/(?P<poster_path>.*)$", poster),
+    )
+
+    def route(self, raise_exception=True):
+        """ route the current request and return True on success else return False
+        """
+
+        for route_pattern, handler in self.routes:
+            m = match(route_pattern, self.path)
+            if m is not None:
+                handler(self, *m.groups())
+                return True
+        if raise_exception:
+            raise HTTPError(HTTPStatus.NOT_FOUND)
+        return False
+
+    def auth(self, raise_exception=True):
+        if self.auth_key is None:
+            return True
+        if raise_exception:
+            raise HTTPError(HTTPStatus.UNAUTHORIZED)
+        return False
+
+    def do_GET(self):
+        try:
+            self.auth()
+            self.route()
+
+        except HTTPError as e:
+            self.send_error(e.code, e.message)
+            return
 
 
-def radarr_api_adapter_class_maker(api_url, api_key):
-    cls = type("RadarrApiAdapter", (_RadarrApiAdapter, ), dict(base_api=api_url, auth_key=api_key))
-    return cls
+def radarr_api_adapter_class_maker(api_url, api_key, serv_poster, poster_mapping):
+    if serv_poster and poster_mapping is not None:
+        try:
+            _, _ = poster_mapping
+        except:
+            raise Exception("`poster_mapping` is not correctly set! poster_mapping=%s" % poster_mapping)
+
+    attr = dict(
+        base_api=api_url,
+        auth_key=api_key,
+        serve_poster=serv_poster,
+        poster_mapping=poster_mapping,
+    )
+
+    return type("RadarrApiAdapter", (_RadarrApiAdapter, ), attr)
