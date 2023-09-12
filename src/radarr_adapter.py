@@ -50,7 +50,7 @@ class _RadarrApiAdapter(BaseHTTPRequestHandler, FileServingMixin):
                 genres=item["genres"],
                 title=item["title"],
                 runtime=item["runtime"],
-                id=tmdb_id,
+                tmdb_id=tmdb_id,
                 imdb_id=item.get("imdbId", ""),
                 homepage=item.get("website"),
                 trailer_key=item.get("youTubeTrailerId"),
