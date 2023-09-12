@@ -70,7 +70,12 @@ class _RadarrApiAdapter(BaseHTTPRequestHandler, FileServingMixin):
                 poster = None
                 for media in item.get("images", []):
                     if media.get("coverType") == "poster":
-                        poster = media.get("url")
+                        remote_url = media.get("remoteUrl")
+                        if remote_url:
+                            out["poster_url"] = remote_url
+                            return out
+                        else:
+                            poster = media.get("url")
                         break
 
                 if poster:
@@ -79,10 +84,11 @@ class _RadarrApiAdapter(BaseHTTPRequestHandler, FileServingMixin):
                         poster = "/" + poster
 
                     parts = urllib.parse.urlsplit(request_path)
-                    new_parts = (parts[0], parts[1], "/poster" + poster, "", "")  # TODO: add auth key ?auth_key=....
+                    
+                    new_parts = (parts[0], parts[1], "/v3/poster" + poster, "", "")  # TODO: add auth key ?auth_key=....
                     poster_url = urllib.parse.urlunsplit(new_parts)
 
-                    out["poster_path"] = poster_url
+                    out["poster_url"] = poster_url
 
             return out
 
