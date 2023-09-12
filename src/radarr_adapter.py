@@ -56,15 +56,15 @@ class _RadarrApiAdapter(BaseHTTPRequestHandler, FileServingMixin):
                 trailer_key=item.get("youTubeTrailerId"),
                 trailer_site="youtube",
             )
-            rating = data.get("rating")
-            if rating:
-                votes = rating.get("votes")
-                if votes:
-                    out["vote_count"] = votes
+            #rating = data.get("rating")
+            #if rating:
+            #    votes = rating.get("votes")
+            #    if votes:
+            #        out["vote_count"] = votes
 
-                value = rating.get("value")
-                if value:
-                    out["vote_average"] = value
+            #    value = rating.get("value")
+            #    if value:
+            #        out["vote_average"] = value
 
             if self.serve_poster:
                 poster = None
